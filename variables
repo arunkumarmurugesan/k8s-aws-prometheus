@@ -1,0 +1,54 @@
+#########################################################################################
+#components default version
+#########################################################################################
+GRAFANA_VERSION=5.1.1
+PROMETHEUS_VERSION=v2.4.2
+PROMETHEUS_OPERATOR_VERSION=v0.19.0
+PROMETHEUS_STORAGE_RETENTION=168h
+PROMETHEUS_STORAGE_VOLUME_SIZE=20Gi
+PROMETHEUS_MEMORY_REQUEST=300Mi
+ALERTMANAGER_VERSION=v0.15.0-rc.1
+NODE_EXPORTER_VERSION=v0.16.0
+KUBE_STATE_METRICS_VERSION=v1.4.0
+STORAGE_CLASS_PROVISIONER=kubernetes.io/aws-ebs
+STORAGE_CLASS_TYPE=gp2
+PROMETHEUS_EXTERNAL_URL=http://127.0.0.1:9090
+ALERTMANAGER_EXTERNAL_URL=http://127.0.0.1:9093
+smtp_smarthost="" # smtp host endpoint
+smtp_from="" #from email address 
+smtp_user="" # Access Key of SES User
+smtp_password="" # Secret key of SES user
+alert_email_address="" # receiver email address
+slack_api_token="" # Slack webhook token
+slack_channel="" # Slack Channal Name
+grafana_admin_password="" # Grafana Password
+
+#Grafana Variables
+DEFAULT_REGION="us-west-2"
+ACCESS_KEY=""  # Access key for Grafana User 
+SECRET_KEY="" # Secret key for Grafana User
+
+#KubeWatch Variables
+KUBEWATCH_SLACK_TOKEN="" # Slack Bot Token
+KUBEWATCH_SLACK_CHANNEL="" # Slack Bot Channel 
+
+#Cloudwatch variables
+CLOUDWATCH_SNS_TOIPC="" # sns topic name
+CLOUDWATCH_SUBSCRIPTION_EMAIL_ID="" # sns notificaiton email address
+
+#AWS CREDIENTIALS
+DEFAULT_REGION="\"us-west-2"\" # Grafana Cloudwatch Monitoring Dashboard
+AWS_ACCESSKEY="\"<key>"\"  # Grafana Cloudwatch Monitoring Dashboard - Access key - Use same grafana access/secret key here too
+AWS_SECRETKEY="\"<key>"\" # Grafana Cloudwatch Monitoring Dashboard - Access key - Use same grafana access/secret key here too
+#########################################################################################
+#environment configuration
+#########################################################################################
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+ORANGE='\033[0;33m'
+BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
+GREEN_PS3=$'\e[0;32m'
+ORANGE_PS3=$'\e[0;33m'
+WHITE='\033[0;37m'
+

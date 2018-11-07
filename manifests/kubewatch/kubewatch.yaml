@@ -1,0 +1,36 @@
+--- 
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata: 
+  name: kubewatch
+  namespace: slack
+spec: 
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: kubewatch
+    spec: 
+      containers: 
+        - 
+          image: "tuna/kubewatch:v0.0.1"
+          imagePullPolicy: Always
+          name: kubewatch
+          volumeMounts: 
+            - 
+              mountPath: /root
+              name: config-volume
+          resources:
+            requests:
+              memory: "50Mi"
+              cpu: "30m"
+            limits:
+              memory: "80Mi"
+              cpu: "50m"
+      serviceAccount: kubewatch
+      serviceAccountName: kubewatch
+      volumes: 
+        - 
+          configMap: 
+            name: kubewatch
+          name: config-volume

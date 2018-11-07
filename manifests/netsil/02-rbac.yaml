@@ -1,0 +1,51 @@
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1beta1
+metadata:
+  name: epoch
+  namespace: epoch
+rules:
+  - nonResourceURLs:
+      - "/version"
+      - "/healthz"
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources:
+      - "nodes"
+      - "namespaces"
+      - "events"
+      - "services"
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources:
+      - "pods"
+    verbs: ["get", "watch", "list"]
+  - apiGroups: [""]
+    resources:
+      - "configmaps"
+    resourceNames: ["configmap-volume", "configmap-auto-conf"]
+    verbs: ["get", "delete", "update"]
+  - apiGroups: [""]
+    resources:
+      - "configmaps"
+    verbs: ["create"]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: epoch
+  namespace: epoch
+automountServiceAccountToken: true
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1beta1
+metadata:
+  name: epoch
+subjects:
+  - kind: ServiceAccount
+    name: epoch
+    namespace: epoch
+roleRef:
+  kind: ClusterRole
+  name: epoch
+  apiGroup: rbac.authorization.k8s.io

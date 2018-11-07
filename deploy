@@ -1,0 +1,201 @@
+#!/bin/bash
+set -e
+set -o pipefail
+
+source variables
+
+if [ -z "${KUBECONFIG}" ]; then
+    export KUBECONFIG=~/.kube/config
+fi
+
+if [ -z "${NAMESPACE}" ]; then
+    NAMESPACE=monitoring
+fi
+
+echo -e "${BLUE}Creating ${ORANGE}'monitoring' ${BLUE}namespace."
+tput sgr0
+kubectl create namespace "$NAMESPACE"
+echo
+
+kctl() {
+    kubectl --namespace "$NAMESPACE" "$@"
+}
+sed -i -e 's,STORAGE_CLASS_PROVISIONER,'"$STORAGE_CLASS_PROVISIONER"',g' manifests/prometheus/prometheus-k8s.yaml;
+sed -i -e 's,STORAGE_CLASS_TYPE,'"$STORAGE_CLASS_TYPE"',g' manifests/prometheus/prometheus-k8s.yaml;
+#set prometheus operator version
+sed -i -e 's/PROMETHEUS_OPERATOR_VERSION/'"$PROMETHEUS_OPERATOR_VERSION"'/g' manifests/prometheus-operator/prometheus-operator.yaml
+#set prometheus version
+sed -i -e 's/PROMETHEUS_VERSION/'"$PROMETHEUS_VERSION"'/g' manifests/prometheus/prometheus-k8s.yaml
+#set prometheus storage retention
+sed -i -e 's/PROMETHEUS_STORAGE_RETENTION/'"$PROMETHEUS_STORAGE_RETENTION"'/g' manifests/prometheus/prometheus-k8s.yaml
+#set prometheus storage volume size
+sed -i -e 's/PROMETHEUS_STORAGE_VOLUME_SIZE/'"$PROMETHEUS_STORAGE_VOLUME_SIZE"'/g' manifests/prometheus/prometheus-k8s.yaml
+#set prometheus memory request
+sed -i -e 's/PROMETHEUS_MEMORY_REQUEST/'"$PROMETHEUS_MEMORY_REQUEST"'/g' manifests/prometheus/prometheus-k8s.yaml
+#set grafana version
+sed -i -e 's/GRAFANA_VERSION/'"$GRAFANA_VERSION"'/g' manifests/grafana/grafana.de.yaml
+#set alertmanager version
+sed -i -e 's/ALERTMANAGER_VERSION/'"$ALERTMANAGER_VERSION"'/g' manifests/alertmanager/alertmanager.yaml
+#set node-exporter version
+sed -i -e 's/NODE_EXPORTER_VERSION/'"$NODE_EXPORTER_VERSION"'/g' manifests/node-exporter/node-exporter.ds.yaml
+#set node-exporter version
+sed -i -e 's/KUBE_STATE_METRICS_VERSION/'"$KUBE_STATE_METRICS_VERSION"'/g' manifests/kube-state-metrics/kube-state-metrics.de.yaml
+#set prometheus external url
+sed -i -e 's,PROMETHEUS_EXTERNAL_URL,'"$PROMETHEUS_EXTERNAL_URL"',g' manifests/prometheus/prometheus-k8s.yaml
+#set alertmanager external url
+sed -i -e 's,ALERTMANAGER_EXTERNAL_URL,'"$ALERTMANAGER_EXTERNAL_URL"',g' manifests/alertmanager/alertmanager.yaml
+
+#update configmap with SMTP relay info
+sed -i -e 's/your_smtp_smarthost/'"$smtp_smarthost"'/g' assets/alertmanager/alertmanager.yaml
+sed -i -e 's/your_smtp_from/'"$smtp_from"'/g' assets/alertmanager/alertmanager.yaml
+sed -i -e 's/your_smtp_user/'"$smtp_user"'/g' assets/alertmanager/alertmanager.yaml
+sed -i -e 's,your_smtp_pass,'"$smtp_password"',g' assets/alertmanager/alertmanager.yaml
+sed -i -e 's/your_alert_email_address/'"$alert_email_address"'/g' assets/alertmanager/alertmanager.yaml
+sed -i -e 's,your_slack_api_token,'"$slack_api_token"',g' assets/alertmanager/alertmanager.yaml
+sed -i -e 's/your_slack_channel/'"$slack_channel"'/g' assets/alertmanager/alertmanager.yaml
+
+echo -e "${BLUE}Removing all the sed generated files"
+find . -name "*.yaml-e" -exec rm -rf {} \;
+tput sgr0
+
+
+######################################################################################################
+#deploy all the components
+######################################################################################################
+function deployPrometheusOperator() {
+#prometheus-operator
+echo
+echo -e "${ORANGE}Deploying Prometheus Operator"
+tput sgr0
+kctl apply -f manifests/prometheus-operator
+}
+
+function deployAlertManager() {
+#alertmanager
+echo
+echo -e "${ORANGE}Deploying Alertmanager"
+tput sgr0
+(cd ./scripts; ./generate-alertmanager-config-secret.sh)
+kctl apply -f manifests/alertmanager
+}
+
+function deployNodeExporter() {
+#prometheus node-exporter
+echo
+echo -e "${ORANGE}Deploying node-exporter"
+tput sgr0
+kctl apply -f manifests/node-exporter
+}
+
+function deployKubeState() {
+#kube-state-metrics
+echo
+echo -e "${ORANGE}Deploying Kube State Metrics exporter"
+tput sgr0
+kctl apply -f manifests/kube-state-metrics
+echo
+}
+
+function deployGrafana() {
+#grafana
+echo -e "${ORANGE}Deploying Grafana"
+tput sgr0
+
+#create grafana credentials secret
+kctl create secret generic grafana-credentials --from-literal=user="admin" --from-literal=password="${grafana_admin_password}"
+#generate grafana dashboards configmap
+(cd ./scripts; ./generate-dashboards-configmap.sh)
+kctl apply -f manifests/grafana
+  #Check if the Grafana pod is ready
+
+  while :
+  do
+     echo -e "\033[0;32m Waiting for Grafana pod to become ready"
+     tput sgr0
+     sleep 2
+     echo
+     if kubectl get pods -n monitoring | grep grafana | grep Running
+     then
+     break
+  else
+     echo
+     tput sgr0
+     fi
+  done
+
+  GRAFANA_POD=$(kubectl get pods --namespace=monitoring | grep grafana | cut -d ' ' -f 1)
+  echo $GRAFANA_POD
+  #import prometheus datasource in grafana using Grafana API.
+  #proxy grafana to localhost to import datasource using Grafana API.
+  sleep 3
+  kubectl port-forward $GRAFANA_POD --namespace=monitoring 3000:3000 > /dev/null 2>&1 &
+
+  echo
+  echo -e "${ORANGE}Importing Prometheus datasource."
+  tput sgr0
+  sleep 5
+  curl 'http://admin:'${grafana_admin_password}'@127.0.0.1:3000/api/datasources' -X POST -H 'Content-Type: application/json;charset=UTF-8' --data-binary '{"name":"DS_CLOUDWATCH","type":"cloudwatch","access":"proxy","isDefault":true,"jsonData": {"authType": "keys","defaultRegion": '${DEFAULT_REGION}'},"secureJsonData": {"accessKey": '${AWS_ACCESSKEY}',"secretKey": '${AWS_SECRETKEY}'}}' 2> /dev/null 2>&1
+  #check datasources
+  echo -e "${GREEN}Checking datasource"
+  tput sgr0
+  curl 'http://admin:'${grafana_admin_password}'@127.0.0.1:3000/api/datasources' 2> /dev/null 2>&1
+  curl 'http://admin:'${grafana_admin_password}'@127.0.0.1:3000/api/dashboards/db' -X POST -H 'Content-Type: application/json;charset=UTF-8' --data-binary '@ec.json'
+  curl 'http://admin:'${grafana_admin_password}'@127.0.0.1:3000/api/dashboards/db' -X POST -H 'Content-Type: application/json;charset=UTF-8' --data-binary '@rds.json'
+  curl 'http://admin:'${grafana_admin_password}'@127.0.0.1:3000/api/dashboards/db' -X POST -H 'Content-Type: application/json;charset=UTF-8' --data-binary '@elb.json'
+  # kill the backgrounded proxy process
+  kill $(lsof -t -i:3000)
+}
+
+function deployPrometheus() {
+#prometheus
+echo
+echo -e "${ORANGE}Deploying Prometheus"
+tput sgr0
+#generate prometheus rules
+(cd ./scripts; ./generate-rules-configmap.sh)
+
+#deploy prometheus
+kubectl apply -f manifests/prometheus/prometheus-k8s-rbac.yaml
+find manifests/prometheus -type f -not -path "self-hosted/*" -type f ! -name prometheus-k8s-rbac.yaml -exec kubectl --namespace "$NAMESPACE" apply -f {} \;
+
+#self-hosted
+if [[ "$(kubectl get pods -n kube-system | grep scheduler)" ]]; then
+  echo
+  echo -e "${ORANGE}Self hosted"
+  tput sgr0
+  kubectl apply -f manifests/k8s/self-hosted
+  kubectl apply -f manifests/prometheus/self-hosted
+else
+  echo
+  echo -e "${ORANGE}Skipping rules for self hosted clusters "
+  tput sgr0
+fi
+}
+
+function deployKubewatch() {
+	sed -ie "s~KUBEWATCH_SLACK_TOKEN~${KUBEWATCH_SLACK_TOKEN}~" manifests/kubewatch/kubewatch-config.yaml
+	sed -ie "s~KUBEWATCH_SLACK_CHANNEL~${KUBEWATCH_SLACK_CHANNEL}~" manifests/kubewatch/kubewatch-config.yaml
+	kubectl apply -f manifests/kubewatch
+}
+
+function deployNetsil(){
+	sed -ie "s~HOST_URL~${HOST_URL}~" manifests/netsil/03-collector.yaml
+	sed -ie "s~ORG_ID~${ORG_ID}~" manifests/netsil/03-collector.yaml
+	kubectl apply -f manifests/netsil
+}
+
+function deployCloudwatch(){
+        python3  manifests/cloudwatch.py
+}
+main()
+{
+  deployPrometheusOperator
+  deployAlertManager
+  deployNodeExporter
+  deployKubeState
+  deployGrafana
+  deployPrometheus
+  deployKubewatch
+  deployNetsil
+}
+main

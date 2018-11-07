@@ -1,0 +1,80 @@
+apiVersion: extensions/v1beta1
+kind: DaemonSet
+metadata:
+  namespace: epoch
+  name: collector
+  labels:
+    app: epoch
+    component: collector
+spec:
+  minReadySeconds: 0
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app: epoch
+        component: collector
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      tolerations:
+      - key: node-role.kubernetes.io/master
+        operator: Exists
+        effect: NoSchedule
+      containers:
+      - name: collector
+        image: gcr.io/nutanix-epoch/collectors:latest
+        command: ["/bin/bash","-c","while true ; do EPOCH_AOC_HOST=$EPOCH_SERVICE_HOST /opt/nutanix/epoch/collectors/start.sh ; echo Exiting, possibly to upgrade ; sleep 5 ; done"]
+        securityContext:
+          capabilities:
+            add:
+            - NET_RAW
+            - NET_ADMIN
+        env:
+        # Please DO NOT prepend http:// or https:// to the EPOCH_SERVICE_HOST value
+        - name: EPOCH_SERVICE_HOST
+          value: HOST_URL
+        - name: EPOCH_ORGANIZATION_ID
+          value: ORG_ID
+        - name: EPOCH_ANALYSIS_DEPTH
+          value: "layer7"
+        - name: EPOCH_INTERFACE
+          value: "any"
+        - name: EPOCH_L7_SAMPLINGRATE
+          value: "20"
+        - name: DEPLOY_ENV
+          value: "docker"
+        - name: KUBERNETES
+          value: "yes"
+        - name: SD_BACKEND
+          value: "docker"
+        resources:
+          requests:
+            memory: "200Mi"
+            cpu: "300m"
+          limits:
+            memory: "400Mi"
+            cpu: "600m"
+        volumeMounts:
+        - name: cgroup
+          mountPath: /host/sys/fs/cgroup/
+          readOnly: true
+        - name: proc
+          mountPath: /host/proc/
+          readOnly: true
+        - name: docker-sock
+          mountPath: /var/run/docker.sock
+          readOnly: true
+      volumes:
+      - name: cgroup
+        hostPath:
+          path: /sys/fs/cgroup/
+      - name: proc
+        hostPath:
+          path: /proc/
+      - name: docker-sock
+        hostPath:
+          path: /var/run/docker.sock
