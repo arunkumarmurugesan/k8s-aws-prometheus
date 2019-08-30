@@ -1,0 +1,10 @@
+# Top of file
+version: 2
+jobs:
+  build:
+    docker:
+      - image: circleci/golang:1.11.1
+    working_directory: /go/src/github.com/Static-Void-Academy/circleci-hello
+    steps:
+      - checkout # Checks out the source code
+      - run: echo "Hello World!"
